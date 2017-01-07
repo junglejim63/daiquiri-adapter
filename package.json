@@ -1,0 +1,16 @@
+{
+  "name": "daiquiri-adapter",
+  "version": "1.0.0",
+  "description": "Monitors serial communication between Daktronics swimming timing console and terminal, and sends communication to cloud-based message queue.",
+  "main": "daiquiri-adapter.js",
+  "scripts": {
+    "start": "node daiquiri-adapter.js config-production.js",
+    "test": "node daiquiri-adapter.js config-test.js"
+  },
+  "author": "Jim Wiesler",
+  "license": "MIT",
+  "dependencies": {
+    "amqplib": "^0.5.1",
+    "serialport": "^4.0.7"
+  }
+}
