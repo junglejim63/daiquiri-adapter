@@ -8,7 +8,7 @@ var config = {
    pc: {port: "/dev/ttyUSB0", baud: 38400, name: "pc"},   //for linux system
    // cons: {port: "COM10", baud: 38400, name: "cons"},   //for Windows system
    cons: {port: "/dev/ttyUSB1", baud: 38400, name: "cons"},      //for linux system
-   amqp: {ip: "cloudamqp.com", user: "username", pass: "password", exchange: "daiquiri-adapter", exType: 'direct', 
+   amqp: {locator: "cloudamqp.com/sub", user: "username", pass: "password", exchange: "daiquiri-adapter", exType: 'direct', 
           receiveQueue: "daiquiri-commands", retryMin: 1000, retryMax: 30000},
    msg: {
       ignore: [],

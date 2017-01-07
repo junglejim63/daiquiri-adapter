@@ -25,7 +25,7 @@ function DaiquiriAdapterQueue(config) {
    this.ampqPublishChannel = null;
    this.ampqSubscribeChannel = null;
    this.ampqState = "unconnected";
-   this.amqpURL = 'amqp://'+config.amqp.user+':'+config.amqp.pass+'@'+config.amqp.ip+"/"+config.amqp.user;
+   this.amqpURL = 'amqp://'+config.amqp.user+':'+config.amqp.pass+'@'+config.amqp.locator;
    this.amqpRetry = config.amqp.retryMin;
    if (config.destination == "amqp") {
       startAMQP(this);
