@@ -22,9 +22,9 @@ function DaiquiriAdapterQueue(config) {
    this.config = config;
    this.offlinePubQueue = []; //array for holding messages when queue is not connected
    this.amqpQueueOpts = {exclusive: false, durable: false, autoDelete: false, messageTtl: 10000, arguments: {}};
-   this.ampqPublishChannel = null;
-   this.ampqSubscribeChannel = null;
-   this.ampqState = "unconnected";
+   this.amqpPublishChannel = null;
+   this.amqpSubscribeChannel = null;
+   this.amqpState = "unconnected";
    this.amqpURL = 'amqp://'+config.amqp.user+':'+config.amqp.pass+'@'+config.amqp.locator;
    this.amqpRetry = config.amqp.retryMin;
    if (config.destination == "amqp") {
@@ -34,37 +34,14 @@ function DaiquiriAdapterQueue(config) {
  }
 util.inherits(DaiquiriAdapterQueue, events.EventEmitter);
 
-//Set aggregating frequency to meet frequency (usually more rapid, like running clock once per second)
-DaiquiriAdapterQueue.prototype.setMeet = function(meetName) {
-   this.inMeet = meetName || "Unnamed Meet";
-   for (i = 0; i < this.config.msg.aggregate.length; i++) {
-      this.config.msg.aggregate[i].freq = this.config.msg.aggregate[i].meetFreq;
-   }
-   console.log("[%s] setMeet(): Fast logging frequency set for meet: %s", (new Date()).toISOString(), meetName);
-}
-
-//Set aggregating frequency to idle frequency (usually slower, like running clock once per minute.  Saves on queue bandwidth when idle)
-DaiquiriAdapterQueue.prototype.clearMeet = function() {
-   this.inMeet = "Idle";
-   for (i = 0; i < this.config.msg.aggregate.length; i++) {
-      this.config.msg.aggregate[i].freq = this.config.msg.aggregate[i].idleFreq;
-   }
-   console.log("[%s] clearMeet(): Idle logging frequency set", (new Date()).toISOString());
-}
-
 var q = new DaiquiriAdapterQueue(require("./"+process.argv[2]).config);
-module.exports.daiquiriAdapter = q;
-
-//A "local" node repl with a custom prompt
-var localREPL = repl.start("daiquiri-adapter::"+q.config.system+"> ");
-localREPL.context.q = q;
 
 //*******************************************************
 //AMQP Port Setup
 //*******************************************************
 function retryAMQP(q) {
    q.amqpRetry = Math.min(q.amqpRetry + 2000, q.config.amqp.retryMax);
-   q.ampqState = "closed";
+   q.amqpState = "closed";
    setTimeout(function(){startAMQP(q);}, q.amqpRetry);
 }
 
@@ -89,7 +66,7 @@ function startAMQP(q) {
                conn.close();
                retryAMQP(q);
             } else {
-               q.ampqPublishChannel = ch;
+               q.amqpPublishChannel = ch;
                // Create link to Exchange (publish)
                ch.assertExchange(q.config.amqp.exchange, q.config.amqp.exType, {durable: true}, function(err, ok){
                   if (err) {
@@ -98,7 +75,7 @@ function startAMQP(q) {
                      retryAMQP(q);
                   } else {
                      //queue is ready, start input
-                     q.ampqState = "open";
+                     q.amqpState = "open";
                      q.amqpRetry = q.config.amqp.retryMin;
                      //send all messages saved while offline
                      while (q.offlinePubQueue.length > 0) {
@@ -121,11 +98,11 @@ function startAMQP(q) {
                conn.close();
                retryAMQP(q);
             } else {
-               q.ampqSubscribeChannel = ch;
+               q.amqpSubscribeChannel = ch;
                // Create link to Queue (subscribe)
                ch.assertQueue(q.config.amqp.receiveQueue + "-" + q.config.system);
                ch.consume(q.config.amqp.receiveQueue + "-" + q.config.system, function(msg) {
-                  consume(q.ampqSubscribeChannel, msg, q);
+                  consume(q.amqpSubscribeChannel, msg, q);
                });
                ch.on('error', function(err) {
                   console.error('Channel to '+q.amqpURL+' error: '+err);
@@ -186,7 +163,7 @@ function startInput(q) {
             setTimeout(popALine, 100);
          } else {
             sendMsg(q, mgmtData);
-            setTimeout(function(){process.exit();}, 5000);
+            setTimeout(function(){process.exit();}, 300000); //wait 5 minutes after EOF to exit
          }
       }
    }
@@ -207,10 +184,41 @@ for (i = 0; i < q.config.msg.aggregate.length; i++) {
 if (q.config.mgmt.period > 0) {
    setTimeout(SendmgmtDataTotals, q.config.mgmt.period*1000);
 }
-function SendmgmtDataTotals() {
+
+//Set aggregating frequency to meet frequency (usually more rapid, like running clock once per second)
+function setMeet(meetName) {
+   q.Meet = meetName || "Unnamed Meet";
+   for (i = 0; i < q.config.msg.aggregate.length; i++) {
+      mgmtData.m[q.config.msg.aggregate[i].type].f = q.config.msg.aggregate[i].meetFreq;
+   }
+   console.log("[%s] setMeet(): Fast logging frequency set for meet: %s", (new Date()).toISOString(), meetName);
+}
+
+//Set aggregating frequency to idle frequency (usually slower, like running clock once per minute.  Saves on queue bandwidth when idle)
+function clearMeet() {
+   q.Meet = "Idle";
+   for (i = 0; i < q.config.msg.aggregate.length; i++) {
+      mgmtData.m[q.config.msg.aggregate[i].type].f = q.config.msg.aggregate[i].idleFreq;
+   }
+   console.log("[%s] clearMeet(): Idle logging frequency set", (new Date()).toISOString());
+}
+
+module.exports.daiquiriAdapter = q;
+
+//A "local" node repl with a custom prompt
+var localREPL = repl.start("daiquiri-adapter::"+q.config.system+"> ");
+localREPL.context.q = q;
+localREPL.context.status = SendmgmtDataTotals;
+localREPL.context.mgmt = mgmtData;
+localREPL.context.setMeet = setMeet;
+localREPL.context.clearMeet = clearMeet;
+
+
+function SendmgmtDataTotals(period) {
+   if (typeof period == 'number') {q.config.mgmt.period = period;}
    sendMsg(q, mgmtData);
    console.dir(mgmtData);
-   setTimeout(SendmgmtDataTotals, q.config.mgmt.period*1000);
+   if (q.config.mgmt.period > 0) {setTimeout(SendmgmtDataTotals, q.config.mgmt.period*1000);}
 }
 
 
@@ -262,8 +270,8 @@ function sendMsg(q, m) {
 //AMQP publish
 //*******************************************************
 function publish(q, x) {
-   if (q.ampqState == 'open') {
-      q.ampqPublishChannel.publish(x.exchange, x.routingKey, x.content);
+   if (q.amqpState == 'open') {
+      q.amqpPublishChannel.publish(x.exchange, x.routingKey, x.content);
    } else {
       q.offlinePubQueue.push(x);
    }
@@ -278,8 +286,8 @@ function consume(ch, msg, q) {
       console.log("[%s]", msg.content.toString());
       var content = JSON.parse(msg.content.toString());
       console.log("[%s] Message received from queue: %s", (new Date()).toISOString(), JSON.stringify(content));
-      if (content.setMeet) q.setMeet(content.setMeet);
-      if (content.clearMeet) q.clearMeet();
+      if (content.setMeet) {setMeet(content.setMeet);}
+      if (content.clearMeet) {clearMeet();}
    } catch(e) {
       console.log("[%s] Invalid Message received from queue: %s", (new Date()).toISOString(), e);
       console.dir(msg);
